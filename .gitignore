@@ -20,8 +20,9 @@
 # Go workspace file
 go.work
 
-# maelstrom folder
+# maelstrom stuff
 maelstrom/
+store/
 
 # JetBrains stuff
 **/.idea/
