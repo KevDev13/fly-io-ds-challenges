@@ -21,4 +21,7 @@
 go.work
 
 # maelstrom folder
-maelstrom/*
+maelstrom/
+
+# JetBrains stuff
+**/.idea/
