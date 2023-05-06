@@ -14,6 +14,7 @@ func main() {
 
 	var sequenceCount int = 0
 	var seenValues []any
+	var myNeighbors []string
 
 	n.Handle("echo", func(msg maelstrom.Message) error {
 		var body map[string]any
@@ -43,12 +44,16 @@ func main() {
 	})
 
 	n.Handle("broadcast", func(msg maelstrom.Message) error {
-		var body map[string]any
+		var body struct {
+			Message int `json:"message"`
+		}
 		if err := json.Unmarshal(msg.Body, &body); err != nil {
 			return err
 		}
 
-		seenValues = append(seenValues, body["message"])
+		seenValues = append(seenValues, body.Message)
+
+		broadcast(n, body.Message, myNeighbors)
 
 		result := map[string]any{
 			"type": "broadcast_ok",
@@ -79,6 +84,8 @@ func main() {
 			return err
 		}
 
+		myNeighbors = body.Topology[myId]
+
 		result := map[string]any{
 			"type": "topology_ok",
 		}
@@ -87,5 +94,18 @@ func main() {
 
 	if err := n.Run(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func broadcast(me *maelstrom.Node, message int, nodes []string) {
+	body := map[string]any{
+		"type":    "broadcast",
+		"message": message,
+	}
+	for _, node := range nodes {
+		err := me.Send(node, body)
+		if err != nil {
+			return
+		}
 	}
 }
