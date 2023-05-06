@@ -32,12 +32,10 @@ func main() {
 			return err
 		}
 
-		// update msg type to return back
 		body["type"] = "generate_ok"
 		body["id"] = fmt.Sprint(n.ID(), "-", sequenceCount) // node ID + node's sequence count
 		sequenceCount += 1
 
-		// echo original msg back with updated type
 		return n.Reply(msg, body)
 	})
 
