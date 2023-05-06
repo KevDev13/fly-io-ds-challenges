@@ -10,8 +10,10 @@ import (
 
 func main() {
 	n := maelstrom.NewNode()
+	myId := n.ID()
 
 	var sequenceCount int = 0
+	var seenValues []any
 
 	n.Handle("echo", func(msg maelstrom.Message) error {
 		var body map[string]any
@@ -34,13 +36,11 @@ func main() {
 
 		// update msg type to return back
 		body["type"] = "generate_ok"
-		body["id"] = fmt.Sprint(n.ID(), "-", sequenceCount) // node ID + node's sequence count
+		body["id"] = fmt.Sprint(myId, "-", sequenceCount) // node ID + node's sequence count
 		sequenceCount += 1
 
 		return n.Reply(msg, body)
 	})
-
-	var seenValues []any
 
 	n.Handle("broadcast", func(msg maelstrom.Message) error {
 		var body map[string]any
