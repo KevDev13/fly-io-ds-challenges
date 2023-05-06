@@ -50,10 +50,11 @@ func main() {
 
 		seenValues = append(seenValues, body["message"])
 
-		body["type"] = "broadcast_ok"
-		delete(body, "message")
+		result := map[string]any{
+			"type": "broadcast_ok",
+		}
 
-		return n.Reply(msg, body)
+		return n.Reply(msg, result)
 	})
 
 	n.Handle("read", func(msg maelstrom.Message) error {
@@ -62,21 +63,26 @@ func main() {
 			return err
 		}
 
-		body["type"] = "read_ok"
-		body["messages"] = seenValues
+		result := map[string]any{
+			"type":     "read_ok",
+			"messages": seenValues,
+		}
 
-		return n.Reply(msg, body)
+		return n.Reply(msg, result)
 	})
 
 	n.Handle("topology", func(msg maelstrom.Message) error {
-		var body map[string]any
+		var body struct {
+			Topology map[string][]string `json:"topology"`
+		}
 		if err := json.Unmarshal(msg.Body, &body); err != nil {
 			return err
 		}
 
-		body["type"] = "topology_ok"
-		delete(body, "topology")
-		return n.Reply(msg, body)
+		result := map[string]any{
+			"type": "topology_ok",
+		}
+		return n.Reply(msg, result)
 	})
 
 	if err := n.Run(); err != nil {
