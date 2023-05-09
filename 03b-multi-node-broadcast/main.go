@@ -2,63 +2,62 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
+	"sync"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
 
 func main() {
 	n := maelstrom.NewNode()
-	myId := n.ID()
 
-	var sequenceCount int = 0
-	var seenValues []any
+	seenValues := make(map[int]bool)
 	var myNeighbors []string
-
-	n.Handle("echo", func(msg maelstrom.Message) error {
-		var body map[string]any
-		if err := json.Unmarshal(msg.Body, &body); err != nil {
-			return err
-		}
-
-		// update msg type to return back
-		body["type"] = "echo_ok"
-
-		// echo original msg back with updated type
-		return n.Reply(msg, body)
-	})
-
-	n.Handle("generate", func(msg maelstrom.Message) error {
-		var body map[string]any
-		if err := json.Unmarshal(msg.Body, &body); err != nil {
-			return err
-		}
-
-		// update msg type to return back
-		body["type"] = "generate_ok"
-		body["id"] = fmt.Sprint(myId, "-", sequenceCount) // node ID + node's sequence count
-		sequenceCount += 1
-
-		return n.Reply(msg, body)
-	})
+	var seenValuesMut sync.RWMutex
 
 	n.Handle("broadcast", func(msg maelstrom.Message) error {
 		var body struct {
-			Message int `json:"message"`
+			Message   int `json:"message"`
+			MessageId int `json:"msg_id"`
 		}
 		if err := json.Unmarshal(msg.Body, &body); err != nil {
 			return err
 		}
 
-		seenValues = append(seenValues, body.Message)
-
-		broadcast(n, body.Message, myNeighbors)
-
+		newVal := body.Message
 		result := map[string]any{
 			"type": "broadcast_ok",
 		}
 
+		// check to see if this is a duplicate message
+		seenValuesMut.RLock()
+		_, ok := seenValues[newVal]
+		seenValuesMut.RUnlock()
+		if ok {
+			return nil
+		}
+
+		// send to neighboring nodes first, so we can hold mutex as little as possible
+		newBody := map[string]any{
+			"type":    "broadcast",
+			"message": newVal, // currently only send new value - will want to change for network partition/failure case
+			"msg_id":  0,
+		}
+		for _, node := range myNeighbors {
+			if err := n.Send(node, newBody); err != nil {
+				return nil
+			}
+
+		}
+
+		seenValuesMut.Lock()
+		defer seenValuesMut.Unlock()
+		seenValues[newVal] = true
+
+		// if this came from another node, don't send a reply
+		if body.MessageId == 0 {
+			return nil
+		}
 		return n.Reply(msg, result)
 	})
 
@@ -68,9 +67,17 @@ func main() {
 			return err
 		}
 
+		seenValuesMut.RLock()
+		defer seenValuesMut.RUnlock()
+
+		var vals []int
+		for v := range seenValues {
+			vals = append(vals, v)
+		}
+
 		result := map[string]any{
 			"type":     "read_ok",
-			"messages": seenValues,
+			"messages": vals,
 		}
 
 		return n.Reply(msg, result)
@@ -84,7 +91,7 @@ func main() {
 			return err
 		}
 
-		myNeighbors = body.Topology[myId]
+		myNeighbors = body.Topology[n.ID()]
 
 		result := map[string]any{
 			"type": "topology_ok",
@@ -94,18 +101,5 @@ func main() {
 
 	if err := n.Run(); err != nil {
 		log.Fatal(err)
-	}
-}
-
-func broadcast(me *maelstrom.Node, message int, nodes []string) {
-	body := map[string]any{
-		"type":    "broadcast",
-		"message": message,
-	}
-	for _, node := range nodes {
-		err := me.Send(node, body)
-		if err != nil {
-			return
-		}
 	}
 }
