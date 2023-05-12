@@ -38,6 +38,7 @@ func main() {
 			return nil
 		}
 
+		// start sending to neighbors via goroutines
 		for _, node := range myNeighbors {
 			if node != msg.Src {
 				go sendToNeighbor(n, node, newVal)
