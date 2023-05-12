@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"time"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
@@ -37,17 +38,10 @@ func main() {
 			return nil
 		}
 
-		// send to neighboring nodes first, so we can hold mutex as little as possible
-		newBody := map[string]any{
-			"type":    "broadcast",
-			"message": newVal, // currently only send new value - will want to change for network partition/failure case
-			"msg_id":  0,
-		}
 		for _, node := range myNeighbors {
-			if err := n.Send(node, newBody); err != nil {
-				return nil
+			if node != msg.Src {
+				go sendToNeighbor(n, node, newVal)
 			}
-
 		}
 
 		seenValuesMut.Lock()
@@ -101,5 +95,27 @@ func main() {
 
 	if err := n.Run(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func sendToNeighbor(me *maelstrom.Node, node string, msg int) {
+	good := false
+	newBody := map[string]any{
+		"type":    "broadcast",
+		"message": msg,
+		"msg_id":  0,
+	}
+	if err := me.RPC(node, newBody, func(msg maelstrom.Message) error {
+		good = true
+		return nil
+	}); err != nil {
+		return
+	}
+
+	// if after 500 seconds we don't have a response, try, try again
+	// duplicates are already taken care of so no issue if receiving node gets this twice
+	time.Sleep(time.Millisecond * 500)
+	if !good {
+		sendToNeighbor(me, node, msg)
 	}
 }
